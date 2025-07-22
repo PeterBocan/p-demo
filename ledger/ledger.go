@@ -51,13 +51,31 @@ func (l *Ledger) Transact(t models.Transaction) error {
 		l.balances[t.AccountID] = balance + t.Amount
 		l.balanceMut.Unlock()
 
-	case models.NormalPurchase, models.PurchaseWithInstallments, models.Withdrawal:
-		if balance < t.Amount {
-			return ErrNotEnoughFunds
-		}
+		l.txMux.RLock()
+		accountTransactions := l.transactions[t.AccountID]
+		l.txMux.RUnlock()
 
+		creditAmount := t.Amount
+		for idx := range accountTransactions {
+			if accountTransactions[idx].Balance < 0 {
+				amount := accountTransactions[idx].Balance
+
+				if creditAmount+amount > 0.0 {
+					accountTransactions[idx].Balance = 0.0
+					creditAmount += amount
+					continue
+				}
+				accountTransactions[idx].Balance = creditAmount + amount
+				creditAmount = 0.0
+				continue
+			}
+		}
+		// the balance of the credit deposit is the remainder of the money left after settling the credit transactions
+		t.Balance = creditAmount
+
+	case models.NormalPurchase, models.PurchaseWithInstallments, models.Withdrawal:
 		l.balanceMut.Lock()
-		l.balances[t.AccountID] = balance - t.Amount
+		l.balances[t.AccountID] = balance + t.Amount
 		l.balanceMut.Unlock()
 
 	default:
@@ -90,6 +108,19 @@ func (l *Ledger) AddAccount(account int) error {
 	l.txMux.Unlock()
 
 	return nil
+}
+
+// GetTransactionHistory
+func (l *Ledger) GetTransactionHistory(account int) ([]models.Transaction, error) {
+	l.txMux.RLock()
+	transactionHistory, ok := l.transactions[account]
+	l.txMux.RUnlock()
+
+	if !ok {
+		return nil, ErrAccountDoesNotExistInLedger
+	}
+
+	return transactionHistory, nil
 }
 
 // Balance returns current balance associated with the account

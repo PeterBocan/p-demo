@@ -52,5 +52,6 @@ type Transaction struct {
 	AccountID int           `json:"account_id"`
 	Type      OperationType `json:"operation_type_id"`
 	Amount    float64       `json:"amount"`
+	Balance   float64       `json:"balance"`
 	EventDate time.Time     `json:"event_date"`
 }
